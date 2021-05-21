@@ -91,7 +91,7 @@ public class CSVConverter {
         int currentLineCounter = -1;
         int currentStepCounter = 1;
 
-        String[] columns = getColumnsArray();
+        String[] columns = getColumnsDebugOn();
 
         String row;
         while ((row = bufferedReader.readLine()) != null) {
@@ -118,7 +118,7 @@ public class CSVConverter {
 
     private int getColumnIndex(String columnName) {
 
-        String[] columnsArray = getColumnsArray();
+        String[] columnsArray = getColumnsDebugOn();
 
         Integer found = null;
 
@@ -236,7 +236,8 @@ public class CSVConverter {
         });
     }
 
-    private String[] getColumnsArray() {
+    // Return array of columns located BEFORE debug columns in imported file.
+    private String[] getColumnsBeforeDebug() {
         return new String[]{
                 "loopIteration",
                 "time (us)",
@@ -268,11 +269,23 @@ public class CSVConverter {
                 "gyroADC[2]",
                 "accSmooth[0]",
                 "accSmooth[1]",
-                "accSmooth[2]",
+                "accSmooth[2]"
+        };
+    }
+
+    // Return array of columns used as blackbox debug columns in imported file.
+    private String[] getColumnsDebug() {
+        return new String[]{
                 "debug[0]",
                 "debug[1]",
                 "debug[2]",
-                "debug[3]",
+                "debug[3]"
+        };
+    }
+
+    // Return array of columns located AFTER debug columns in imported file.
+    private String[] getColumnsAfterDebug() {
+        return new String[]{
                 "motor[0]",
                 "motor[1]",
                 "motor[2]",
@@ -295,6 +308,16 @@ public class CSVConverter {
                 FAILSAFE_PHASE_INDICATOR_HEADER,
                 STATUS_ICON_INDICATOR_HEADER
         };
+    }
+
+    // Returns full collection of columns used in imported file including columns of blackbox debug mode.
+    private String[] getColumnsDebugOn() {
+
+        List<String> result = Arrays.asList(getColumnsBeforeDebug());
+        result.addAll(Arrays.asList(getColumnsDebug()));
+        result.addAll(Arrays.asList(getColumnsAfterDebug()));
+
+        return result.toArray(new String[0]);
     }
 
     private int countLines(String fileName) throws IOException {
