@@ -8,7 +8,13 @@ public class Run {
     public static void main(String[] args) throws Exception {
 
         if (args.length < 2) {
-            System.out.printf("*** Not enough params! ***");
+            System.out.println("*** Not enough params! ***");
+            String fileName = new java.io.File(Run.class.getProtectionDomain()
+                    .getCodeSource()
+                    .getLocation()
+                    .getPath())
+                    .getName();
+            System.out.printf("Usage: java -jar " + fileName + " inputFile outputFile [interval=1]");
             return;
         }
 

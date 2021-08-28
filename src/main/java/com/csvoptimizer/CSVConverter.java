@@ -9,7 +9,7 @@ public class CSVConverter {
     private final String CSV_DELIMITER = ",";
     private final String TIME_COLUMN_NAME = "time (us)";
     private final String DATE_FORMAT_INPUT = "yyyy-MM-dd HH:mm:ss";
-    private final String DEFAULT_START_DATE = "2020-01-01 12:00:00";
+    private final String DEFAULT_START_DATE = "2021-01-01 12:00:00";
     private final String DATE_FORMAT_GPX = "yyyy-MM-dd'T'HH:mm:ss";
 
     private final Locale DATE_LOCALE = Locale.ENGLISH;
@@ -313,7 +313,7 @@ public class CSVConverter {
     // Returns full collection of columns used in imported file including columns of blackbox debug mode.
     private String[] getColumnsDebugOn() {
 
-        List<String> result = Arrays.asList(getColumnsBeforeDebug());
+        List<String> result = new ArrayList<>(Arrays.asList(getColumnsBeforeDebug()));
         result.addAll(Arrays.asList(getColumnsDebug()));
         result.addAll(Arrays.asList(getColumnsAfterDebug()));
 
