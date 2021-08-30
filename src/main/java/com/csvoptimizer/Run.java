@@ -9,7 +9,7 @@ public class Run {
 
         if (args.length < 2) {
             System.out.println("*** Not enough params! ***");
-            String fileName = new java.io.File(Run.class.getProtectionDomain()
+            String fileName = new File(Run.class.getProtectionDomain()
                     .getCodeSource()
                     .getLocation()
                     .getPath())
@@ -30,7 +30,12 @@ public class Run {
             step = Integer.parseInt(args[2]);
         }
 
-        CSVConverter converter = new CSVConverter(pathToInputFile, pathToOutputFile, step);
+        String startingDate = null;
+        if (args.length > 3) {
+            startingDate = args[3];
+        }
+
+        CSVConverter converter = new CSVConverter(pathToInputFile, pathToOutputFile, step, startingDate);
         converter.run();
     }
 

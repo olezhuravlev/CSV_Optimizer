@@ -6,25 +6,36 @@ import java.util.*;
 
 public class CSVConverter {
 
-    private final String CSV_DELIMITER = ",";
-    private final String TIME_COLUMN_NAME = "time (us)";
-    private final String DATE_FORMAT_INPUT = "yyyy-MM-dd HH:mm:ss";
     private final String DEFAULT_START_DATE = "2021-01-01 12:00:00";
+    private final String CSV_DELIMITER = ",";
+
+    private final String DATE_FORMAT_INPUT = "yyyy-MM-dd HH:mm:ss";
+    private final String DATE_FORMAT_USER = DATE_FORMAT_INPUT;
     private final String DATE_FORMAT_GPX = "yyyy-MM-dd'T'HH:mm:ss";
+    private final String DATE_FORMAT_MS = "yyyy-MM-dd'T'HH:mm:ss.SSS";
 
     private final Locale DATE_LOCALE = Locale.ENGLISH;
 
     private SimpleDateFormat DATE_FORMATTER_INPUT = new SimpleDateFormat(DATE_FORMAT_INPUT, DATE_LOCALE);
-
-    private String DATE_FORMAT_USER = DATE_FORMAT_INPUT;
     private SimpleDateFormat DATE_FORMATTER_USER = new SimpleDateFormat(DATE_FORMAT_USER, DATE_LOCALE);
     private SimpleDateFormat DATE_FORMATTER_GPX = new SimpleDateFormat(DATE_FORMAT_GPX, DATE_LOCALE);
+    private SimpleDateFormat DATE_FORMATTER_MS = new SimpleDateFormat(DATE_FORMAT_MS, DATE_LOCALE);
 
     private final String INDEX_OUT_OF_BOUND_MESSAGE = "Wrong column index!";
 
-    // Additional classes.
-    // Column header for data to be shown in prescribed format.
+    // Columns used in calculations.
+    private final String TIME_COLUMN_NAME = "time (us)";
+    private final String BARO_ALT_COLUMN_NAME = "BaroAlt (cm)";
+
+    // Additional columns.
+    // Column header for date compatible with GPX-format (e.g. "2000-01-01T00:00:41.092541Z").
+    private final String GPX_DATE_COLUMN_HEADER = "gpxDate";
+
+    // Column header for date to be shown in prescribed format.
     private final String USER_DATE_COLUMN_HEADER = "userDate";
+
+    // Column header for vertical speed calculated from change of barometer altitude.
+    private final String V_SPEED_BARO_HEADER = "vSpeedBaro";
 
     // Digital representation of flight mode flags.
     private final String FLIGHT_MODE_HEADER = "flightModeFlags (flags)";
@@ -43,11 +54,15 @@ public class CSVConverter {
 
     private String pathToInputFile;
     private String pathToOutputFile;
+    private String startingDate;
     int step;
 
-    private Map<String, FieldTransformer> transformers = new HashMap<>();
+    private Map<String, FieldGenerator> generators = new HashMap<>();
 
-    public CSVConverter(String pathToInputFile, String pathToOutputFile, int step) {
+    // Unmodifiable collection can be used in calculation values for another row.
+    private List<String> prevResultValues;
+
+    public CSVConverter(String pathToInputFile, String pathToOutputFile, int step, String startingDate) {
 
         this.pathToInputFile = pathToInputFile;
         this.pathToOutputFile = pathToOutputFile;
@@ -57,24 +72,31 @@ public class CSVConverter {
         }
 
         this.step = step;
+        this.startingDate = startingDate;
+
+        // Initial state identified as null.
+        this.prevResultValues = null;
     }
 
     public void run() throws Exception {
 
-        System.out.println("Enter a starting date for the log as '" + DATE_FORMAT_INPUT + "' (" + DEFAULT_START_DATE + "):");
+        if (startingDate == null || startingDate.isEmpty()) {
 
-        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-        String dateStringInput = reader.readLine();
+            System.out.println("Enter a starting date for the log as '" + DATE_FORMAT_INPUT + "' (" + DEFAULT_START_DATE + "):");
 
-        if (dateStringInput.isEmpty()) {
-            dateStringInput = DEFAULT_START_DATE;
+            BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+            startingDate = reader.readLine();
         }
 
-        Date dateInput = DATE_FORMATTER_INPUT.parse(dateStringInput);
+        if (startingDate == null || startingDate.isEmpty()) {
+            startingDate = DEFAULT_START_DATE;
+        }
 
+        Date dateInput = DATE_FORMATTER_INPUT.parse(startingDate);
         Calendar startDate = Calendar.getInstance();
         startDate.setTime(dateInput);
-        initTransformers(startDate);
+
+        initGenerators(startDate);
 
         File inputFile = new File(pathToInputFile);
 
@@ -106,12 +128,15 @@ public class CSVConverter {
                 continue;
             }
 
+            // Specified quantity of rows should be skipped.
             if (currentStepCounter < step) {
                 ++currentStepCounter;
                 continue;
             }
 
             printRow(row, columns, printWriter);
+
+            // Reset to initial value to start skipping further rows.
             currentStepCounter = 1;
         }
     }
@@ -136,28 +161,50 @@ public class CSVConverter {
         return found;
     }
 
-    private void initTransformers(Calendar startDate) {
+    private void initGenerators(Calendar startDate) {
 
-        // Transforms value from nanoseconds into format used in GPX.
-        transformers.put(TIME_COLUMN_NAME, (columns, rowValues, columnIdx) -> {
-            String currentValue = rowValues.get(columnIdx);
-            String gpxDate = getGPXDateFromTime(currentValue, startDate);
-            return gpxDate;
+        // Generates value from milliseconds into format used in GPX.
+        generators.put(GPX_DATE_COLUMN_HEADER, (columns, rowValues, columnIdx) -> {
+            int timeColumnIdx = getColumnIndex(TIME_COLUMN_NAME);
+            String currentValue = rowValues.get(timeColumnIdx);
+            String timeMs = getMillisecDateFromTime(currentValue, startDate);
+            return timeMs;
         });
 
-        // Adds column value for data to be shown in prescribed format.
-        transformers.put(USER_DATE_COLUMN_HEADER, (columns, rowValues, columnIdx) -> {
-            // By that moment column with date already has time in GPX-format.
-            int sourceColumnIdx = getColumnIndex(TIME_COLUMN_NAME);
-            String gpxDate = rowValues.get(sourceColumnIdx).trim();
-            Date date = DATE_FORMATTER_GPX.parse(gpxDate);
+        // Adds column value for data to be shown in user-friendly format.
+        generators.put(USER_DATE_COLUMN_HEADER, (columns, rowValues, columnIdx) -> {
+            int timeColumnIdx = getColumnIndex(GPX_DATE_COLUMN_HEADER);
+            String timeMs = rowValues.get(timeColumnIdx).trim();
+            Date date = DATE_FORMATTER_MS.parse(timeMs);
             String userDate = DATE_FORMATTER_USER.format(date.getTime());
-
             return userDate;
         });
 
+        // Adds column value for vertical speed calculated from barometer altitude.
+        generators.put(V_SPEED_BARO_HEADER, (columns, rowValues, columnIdx) -> {
+
+            if (prevResultValues == null) {
+                return "0";
+            }
+
+            int timeColumnIdx = getColumnIndex(GPX_DATE_COLUMN_HEADER);
+            String currTimeMs = rowValues.get(timeColumnIdx).trim();
+            String prevTimeMs = prevResultValues.get(timeColumnIdx).trim();
+            Date currentRowDate = DATE_FORMATTER_MS.parse(currTimeMs);
+            Date previousRowDate = DATE_FORMATTER_MS.parse(prevTimeMs);
+
+            int baroAltColumnIdx = getColumnIndex(BARO_ALT_COLUMN_NAME);
+            String currBaroAlt = rowValues.get(baroAltColumnIdx).trim();
+            String prevBaroAlt = prevResultValues.get(baroAltColumnIdx).trim();
+            long currentBaroAltCm = Long.parseLong(currBaroAlt);
+            long prevBaroAltCm = Long.parseLong(prevBaroAlt);
+
+            String vSpeedCm = calculateVertSpeed(currentRowDate, previousRowDate, currentBaroAltCm, prevBaroAltCm);
+            return vSpeedCm;
+        });
+
         // Sets digital representation of flight mode.
-        transformers.put(FLIGHT_MODE_INDICATOR_HEADER, (columns, rowValues, columnIdx) -> {
+        generators.put(FLIGHT_MODE_INDICATOR_HEADER, (columns, rowValues, columnIdx) -> {
 
             int sourceColumnIdx = getColumnIndex(FLIGHT_MODE_HEADER);
             String sourceValue = rowValues.get(sourceColumnIdx);
@@ -180,7 +227,7 @@ public class CSVConverter {
         });
 
         // Sets digital representation of flight state.
-        transformers.put(STATE_INDICATOR_HEADER, (columns, rowValues, columnIdx) -> {
+        generators.put(STATE_INDICATOR_HEADER, (columns, rowValues, columnIdx) -> {
 
             int sourceColumnIdx = getColumnIndex(STATE_HEADER);
             String sourceValue = rowValues.get(sourceColumnIdx);
@@ -201,7 +248,7 @@ public class CSVConverter {
         });
 
         // Sets digital representation of failsafe phase.
-        transformers.put(FAILSAFE_PHASE_INDICATOR_HEADER, (columns, rowValues, columnIdx) -> {
+        generators.put(FAILSAFE_PHASE_INDICATOR_HEADER, (columns, rowValues, columnIdx) -> {
 
             int sourceColumnIdx = getColumnIndex(FAILSAFE_PHASE_HEADER);
             String sourceValue = rowValues.get(sourceColumnIdx);
@@ -218,7 +265,7 @@ public class CSVConverter {
         });
 
         // Sets digital representation of icon to show.
-        transformers.put(STATUS_ICON_INDICATOR_HEADER, (columns, rowValues, columnIdx) -> {
+        generators.put(STATUS_ICON_INDICATOR_HEADER, (columns, rowValues, columnIdx) -> {
 
             int flightColumnIdx = getColumnIndex(FLIGHT_MODE_INDICATOR_HEADER);
             String flight = rowValues.get(flightColumnIdx);
@@ -302,7 +349,9 @@ public class CSVConverter {
                 "GPS_altitude",
                 "GPS_speed (m/s)",
                 "GPS_ground_course",
+                GPX_DATE_COLUMN_HEADER,
                 USER_DATE_COLUMN_HEADER,
+                V_SPEED_BARO_HEADER,
                 FLIGHT_MODE_INDICATOR_HEADER,
                 STATE_INDICATOR_HEADER,
                 FAILSAFE_PHASE_INDICATOR_HEADER,
@@ -349,7 +398,8 @@ public class CSVConverter {
         printRowData(rowData, printWriter);
     }
 
-    private String transformValue(String[] columns, List<String> rowValues, int columnIdx) throws Exception {
+    // Returns value of a column as original or generated (transformed) content.
+    private String generateValue(String[] columns, List<String> rowValues, int columnIdx) throws Exception {
 
         if (columnIdx >= columns.length) {
             throw new IndexOutOfBoundsException(INDEX_OUT_OF_BOUND_MESSAGE);
@@ -366,27 +416,32 @@ public class CSVConverter {
             rowValues.add(columnValue);
         }
 
-        // If there is no transformer for the specified column the value returned as it is.
-        if (!transformers.containsKey(columnName)) {
+        // If there is no generator for the specified column the value returned as it is.
+        if (!generators.containsKey(columnName)) {
             return columnValue;
         }
 
-        FieldTransformer transformer = transformers.get(columnName);
-        String result = transformer.transform(columns, rowValues, columnIdx);
+        // Obtain value using designated generator.
+        FieldGenerator generator = generators.get(columnName);
+        String result = generator.generateValue(columns, rowValues, columnIdx);
         return result;
     }
 
+    // Outputs values of another row into result file.
     private void printRow(String row, String[] columns, PrintWriter printWriter) throws Exception {
 
         String[] rowValues = row.split(CSV_DELIMITER, -1);
 
-        // From the beginning result filled with initial values - it's handy for further transformation
-        // of already transformed values.
+        // From the beginning result filled with initial values - it's handy for further generations
+        // of already generated values.
         List<String> resultValues = new ArrayList<>(Arrays.asList(rowValues));
         for (int i = 0; i < columns.length; ++i) {
-            String result = transformValue(columns, resultValues, i);
+            String result = generateValue(columns, resultValues, i);
             resultValues.set(i, result);
         }
+
+        // Store current result to use it for calculations of the next row.
+        prevResultValues = Collections.unmodifiableList(resultValues);
 
         printRowData(resultValues, printWriter);
     }
@@ -399,25 +454,25 @@ public class CSVConverter {
     }
 
     /**
-     * Returns date in format "2000-01-01T00:00:41.092541Z".
+     * Returns date in format of milliseconds (e.g. "2000-01-01T00:00:41.092541Z").
      *
-     * @param timeNanoseconds
+     * @param timeMilliseconds
      * @param startDate
      * @return
      */
-    private String getGPXDateFromTime(String timeNanoseconds, final Calendar startDate) {
+    private String getMillisecDateFromTime(String timeMilliseconds, final Calendar startDate) {
 
-        // Last 6 digits stand for nanoseconds.
-        int endPosition = timeNanoseconds.length() - 6;
+        // Last 6 digits stand for milliseconds.
+        int endPosition = timeMilliseconds.length() - 6;
         if (endPosition < 0) {
             endPosition = 0;
         }
 
-        String nanoseconds = timeNanoseconds.substring(endPosition).trim();
-        int nanosecondsInt = parseInt(nanoseconds);
-        String nanosecondsString = getComplementedValue(nanosecondsInt, 6, "0");
+        String milliseconds = timeMilliseconds.substring(endPosition).trim();
+        int millisecondsInt = parseInt(milliseconds);
+        String secondsString = getComplementedValue(millisecondsInt, 6, "0");
 
-        String seconds = timeNanoseconds.substring(0, endPosition).trim();
+        String seconds = timeMilliseconds.substring(0, endPosition).trim();
         int secondsInt = parseInt(seconds);
 
         // We need to create a copy of current calendar not to spoil it for using in the next iteration!
@@ -425,7 +480,28 @@ public class CSVConverter {
         rowDate.add(Calendar.SECOND, secondsInt);
 
         String startingDate = DATE_FORMATTER_GPX.format(rowDate.getTime());
-        return startingDate + "." + nanosecondsString + "Z";
+        return startingDate + "." + secondsString + "Z";
+    }
+
+    private String calculateVertSpeed(Date currDateTime, Date prevDateTime, long currBaroAltCm, long prevBaroAltCm) {
+
+        Calendar currCalendar = Calendar.getInstance();
+        currCalendar.setTime(currDateTime);
+        long currMillis = currCalendar.getTimeInMillis();
+
+        Calendar prevCalendar = Calendar.getInstance();
+        prevCalendar.setTime(prevDateTime);
+        long prevMillis = prevCalendar.getTimeInMillis();
+
+        long timePassedMillis = Math.abs(currMillis - prevMillis);
+
+        if (timePassedMillis == 0) {
+            return "0";
+        }
+
+        double vertSpeed = (currBaroAltCm - prevBaroAltCm) / (double) timePassedMillis;
+
+        return String.valueOf(vertSpeed);
     }
 
     public static int parseInt(String val) {
