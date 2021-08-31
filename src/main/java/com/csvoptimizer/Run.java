@@ -3,6 +3,8 @@ package com.csvoptimizer;
 import java.io.File;
 import java.nio.file.Paths;
 
+import static com.csvoptimizer.CSVConverter.DEFAULT_START_DATE;
+
 public class Run {
 
     public static void main(String[] args) throws Exception {
@@ -14,7 +16,7 @@ public class Run {
                     .getLocation()
                     .getPath())
                     .getName();
-            System.out.printf("Usage: java -jar " + fileName + " inputFile outputFile [interval=1]");
+            System.out.printf("Usage: java -jar " + fileName + " inputFile outputFile [interval=1] [startDate=" + DEFAULT_START_DATE + "]");
             return;
         }
 
@@ -33,6 +35,13 @@ public class Run {
         String startingDate = null;
         if (args.length > 3) {
             startingDate = args[3];
+
+            String startingTime = "00:00:00";
+            if (args.length > 4) {
+                startingTime = args[4];
+            }
+
+            startingDate += " " + startingTime;
         }
 
         CSVConverter converter = new CSVConverter(pathToInputFile, pathToOutputFile, step, startingDate);

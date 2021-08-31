@@ -6,7 +6,8 @@ import java.util.*;
 
 public class CSVConverter {
 
-    private final String DEFAULT_START_DATE = "2021-01-01 12:00:00";
+    public static final String DEFAULT_START_DATE = "2021-01-01 12:00:00";
+
     private final String CSV_DELIMITER = ",";
 
     private final String DATE_FORMAT_INPUT = "yyyy-MM-dd HH:mm:ss";
@@ -35,7 +36,7 @@ public class CSVConverter {
     private final String USER_DATE_COLUMN_HEADER = "userDate";
 
     // Column header for vertical speed calculated from change of barometer altitude.
-    private final String V_SPEED_BARO_HEADER = "vSpeedBaro";
+    private final String V_SPEED_BARO_HEADER = "vSpeedBaroAlt (cm/s)";
 
     // Digital representation of flight mode flags.
     private final String FLIGHT_MODE_HEADER = "flightModeFlags (flags)";
@@ -81,9 +82,7 @@ public class CSVConverter {
     public void run() throws Exception {
 
         if (startingDate == null || startingDate.isEmpty()) {
-
             System.out.println("Enter a starting date for the log as '" + DATE_FORMAT_INPUT + "' (" + DEFAULT_START_DATE + "):");
-
             BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
             startingDate = reader.readLine();
         }
@@ -98,16 +97,20 @@ public class CSVConverter {
 
         initGenerators(startDate);
 
-        File inputFile = new File(pathToInputFile);
+        processRows(pathToInputFile, pathToOutputFile);
+    }
 
-        InputStream inputStream = new FileInputStream(inputFile);
-        InputStreamReader inputStreamReader = new InputStreamReader(inputStream);
-        BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
-        FileWriter outputFileWriter = new FileWriter(pathToOutputFile);
+    private void processRows(String inputPath, String outputPath) throws Exception {
+
+        float totalLines = countLines(inputPath);
+        System.out.println("Lines to process: " + Math.round(totalLines));
+
+        FileWriter outputFileWriter = new FileWriter(outputPath);
         PrintWriter printWriter = new PrintWriter(outputFileWriter);
 
-        float totalLines = countLines(pathToInputFile);
-        System.out.println("Lines to process: " + Math.round(totalLines));
+        InputStream inputStream = new FileInputStream(inputPath);
+        InputStreamReader inputStreamReader = new InputStreamReader(inputStream);
+        BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
 
         String lastPrintedCounter = "";
         int currentLineCounter = -1;
@@ -175,7 +178,7 @@ public class CSVConverter {
         generators.put(USER_DATE_COLUMN_HEADER, (columns, rowValues, columnIdx) -> {
             int timeColumnIdx = getColumnIndex(GPX_DATE_COLUMN_HEADER);
             String timeMs = rowValues.get(timeColumnIdx).trim();
-            Date date = DATE_FORMATTER_MS.parse(timeMs);
+            Date date = DATE_FORMATTER_GPX.parse(timeMs);
             String userDate = DATE_FORMATTER_USER.format(date.getTime());
             return userDate;
         });
@@ -187,11 +190,11 @@ public class CSVConverter {
                 return "0";
             }
 
-            int timeColumnIdx = getColumnIndex(GPX_DATE_COLUMN_HEADER);
+            int timeColumnIdx = getColumnIndex(TIME_COLUMN_NAME);
             String currTimeMs = rowValues.get(timeColumnIdx).trim();
             String prevTimeMs = prevResultValues.get(timeColumnIdx).trim();
-            Date currentRowDate = DATE_FORMATTER_MS.parse(currTimeMs);
-            Date previousRowDate = DATE_FORMATTER_MS.parse(prevTimeMs);
+            long currTime = Long.parseLong(currTimeMs);
+            long prevTime = Long.parseLong(prevTimeMs);
 
             int baroAltColumnIdx = getColumnIndex(BARO_ALT_COLUMN_NAME);
             String currBaroAlt = rowValues.get(baroAltColumnIdx).trim();
@@ -199,7 +202,7 @@ public class CSVConverter {
             long currentBaroAltCm = Long.parseLong(currBaroAlt);
             long prevBaroAltCm = Long.parseLong(prevBaroAlt);
 
-            String vSpeedCm = calculateVertSpeed(currentRowDate, previousRowDate, currentBaroAltCm, prevBaroAltCm);
+            String vSpeedCm = calculateVertSpeed(currTime, prevTime, currentBaroAltCm, prevBaroAltCm);
             return vSpeedCm;
         });
 
@@ -398,14 +401,12 @@ public class CSVConverter {
         printRowData(rowData, printWriter);
     }
 
-    // Returns value of a column as original or generated (transformed) content.
+    // Returns value of a column as original or generated (transformed) from original content.
     private String generateValue(String[] columns, List<String> rowValues, int columnIdx) throws Exception {
 
         if (columnIdx >= columns.length) {
             throw new IndexOutOfBoundsException(INDEX_OUT_OF_BOUND_MESSAGE);
         }
-
-        String columnName = columns[columnIdx];
 
         // If current column index exceeds number of columns of values then such column should be created.
         String columnValue = "";
@@ -417,6 +418,7 @@ public class CSVConverter {
         }
 
         // If there is no generator for the specified column the value returned as it is.
+        String columnName = columns[columnIdx];
         if (!generators.containsKey(columnName)) {
             return columnValue;
         }
@@ -432,8 +434,7 @@ public class CSVConverter {
 
         String[] rowValues = row.split(CSV_DELIMITER, -1);
 
-        // From the beginning result filled with initial values - it's handy for further generations
-        // of already generated values.
+        // From the beginning the result is filled with initial values.
         List<String> resultValues = new ArrayList<>(Arrays.asList(rowValues));
         for (int i = 0; i < columns.length; ++i) {
             String result = generateValue(columns, resultValues, i);
@@ -483,25 +484,18 @@ public class CSVConverter {
         return startingDate + "." + secondsString + "Z";
     }
 
-    private String calculateVertSpeed(Date currDateTime, Date prevDateTime, long currBaroAltCm, long prevBaroAltCm) {
+    private String calculateVertSpeed(long currTimeMs, long prevTimeMs, long currBaroAltCm, long prevBaroAltCm) {
 
-        Calendar currCalendar = Calendar.getInstance();
-        currCalendar.setTime(currDateTime);
-        long currMillis = currCalendar.getTimeInMillis();
+        long timeIntervalMillis = Math.abs(currTimeMs - prevTimeMs);
 
-        Calendar prevCalendar = Calendar.getInstance();
-        prevCalendar.setTime(prevDateTime);
-        long prevMillis = prevCalendar.getTimeInMillis();
-
-        long timePassedMillis = Math.abs(currMillis - prevMillis);
-
-        if (timePassedMillis == 0) {
+        if (timeIntervalMillis == 0) {
             return "0";
         }
 
-        double vertSpeed = (currBaroAltCm - prevBaroAltCm) / (double) timePassedMillis;
+        long heightInterval = currBaroAltCm - prevBaroAltCm;
+        double vertSpeedCmSec = heightInterval / (double) timeIntervalMillis * 1000000;
 
-        return String.valueOf(vertSpeed);
+        return String.valueOf(vertSpeedCmSec);
     }
 
     public static int parseInt(String val) {
