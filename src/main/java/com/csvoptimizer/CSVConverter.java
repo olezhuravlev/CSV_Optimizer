@@ -1,57 +1,12 @@
 package com.csvoptimizer;
 
 import java.io.*;
-import java.text.SimpleDateFormat;
+import java.text.ParseException;
 import java.util.*;
 
-public class CSVConverter {
+import static com.csvoptimizer.Constants.*;
 
-    public static final String DEFAULT_START_DATE = "2021-01-01 12:00:00";
-
-    private final String CSV_DELIMITER = ",";
-
-    private final String DATE_FORMAT_INPUT = "yyyy-MM-dd HH:mm:ss";
-    private final String DATE_FORMAT_USER = DATE_FORMAT_INPUT;
-    private final String DATE_FORMAT_GPX = "yyyy-MM-dd'T'HH:mm:ss";
-    private final String DATE_FORMAT_MS = "yyyy-MM-dd'T'HH:mm:ss.SSS";
-
-    private final Locale DATE_LOCALE = Locale.ENGLISH;
-
-    private SimpleDateFormat DATE_FORMATTER_INPUT = new SimpleDateFormat(DATE_FORMAT_INPUT, DATE_LOCALE);
-    private SimpleDateFormat DATE_FORMATTER_USER = new SimpleDateFormat(DATE_FORMAT_USER, DATE_LOCALE);
-    private SimpleDateFormat DATE_FORMATTER_GPX = new SimpleDateFormat(DATE_FORMAT_GPX, DATE_LOCALE);
-    private SimpleDateFormat DATE_FORMATTER_MS = new SimpleDateFormat(DATE_FORMAT_MS, DATE_LOCALE);
-
-    private final String INDEX_OUT_OF_BOUND_MESSAGE = "Wrong column index!";
-
-    // Columns used in calculations.
-    private final String TIME_COLUMN_NAME = "time (us)";
-    private final String BARO_ALT_COLUMN_NAME = "BaroAlt (cm)";
-
-    // Additional columns.
-    // Column header for date compatible with GPX-format (e.g. "2000-01-01T00:00:41.092541Z").
-    private final String GPX_DATE_COLUMN_HEADER = "gpxDate";
-
-    // Column header for date to be shown in prescribed format.
-    private final String USER_DATE_COLUMN_HEADER = "userDate";
-
-    // Column header for vertical speed calculated from change of barometer altitude.
-    private final String V_SPEED_BARO_HEADER = "vSpeedBaroAlt (cm/s)";
-
-    // Digital representation of flight mode flags.
-    private final String FLIGHT_MODE_HEADER = "flightModeFlags (flags)";
-    private final String FLIGHT_MODE_INDICATOR_HEADER = "flightModeIndicator";
-
-    // Digital representation of state flags.
-    private final String STATE_HEADER = "stateFlags (flags)";
-    private final String STATE_INDICATOR_HEADER = "stateIndicator";
-
-    // Digital representation of failsafe phase.
-    private final String FAILSAFE_PHASE_HEADER = "failsafePhase (flags)";
-    private final String FAILSAFE_PHASE_INDICATOR_HEADER = "failsafePhaseIndicator";
-
-    // Icon to display flight mode, state or failsafe phase.
-    private final String STATUS_ICON_INDICATOR_HEADER = "statusIconIndicator";
+public class CSVConverter extends AbstractRunnable {
 
     private String pathToInputFile;
     private String pathToOutputFile;
@@ -79,25 +34,39 @@ public class CSVConverter {
         this.prevResultValues = null;
     }
 
-    public void run() throws Exception {
+    @Override
+    public void run() {
 
         if (startingDate == null || startingDate.isEmpty()) {
             System.out.println("Enter a starting date for the log as '" + DATE_FORMAT_INPUT + "' (" + DEFAULT_START_DATE + "):");
             BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-            startingDate = reader.readLine();
+            try {
+                startingDate = reader.readLine();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
 
         if (startingDate == null || startingDate.isEmpty()) {
             startingDate = DEFAULT_START_DATE;
         }
 
-        Date dateInput = DATE_FORMATTER_INPUT.parse(startingDate);
+        Date dateInput = null;
+        try {
+            dateInput = DATE_FORMATTER_INPUT.parse(startingDate);
+        } catch (ParseException e) {
+            e.printStackTrace();
+        }
         Calendar startDate = Calendar.getInstance();
         startDate.setTime(dateInput);
 
         initGenerators(startDate);
 
-        processRows(pathToInputFile, pathToOutputFile);
+        try {
+            processRows(pathToInputFile, pathToOutputFile);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void processRows(String inputPath, String outputPath) throws Exception {
@@ -142,26 +111,6 @@ public class CSVConverter {
             // Reset to initial value to start skipping further rows.
             currentStepCounter = 1;
         }
-    }
-
-    private int getColumnIndex(String columnName) {
-
-        String[] columnsArray = getColumnsDebugOn();
-
-        Integer found = null;
-
-        for (int i = 0; i < columnsArray.length; ++i) {
-            if (columnsArray[i].equals(columnName)) {
-                found = i;
-                break;
-            }
-        }
-
-        if (found == null) {
-            throw new IndexOutOfBoundsException(INDEX_OUT_OF_BOUND_MESSAGE);
-        }
-
-        return found;
     }
 
     private void initGenerators(Calendar startDate) {
@@ -286,121 +235,6 @@ public class CSVConverter {
         });
     }
 
-    // Return array of columns located BEFORE debug columns in imported file.
-    private String[] getColumnsBeforeDebug() {
-        return new String[]{
-                "loopIteration",
-                "time (us)",
-                "axisP[0]",
-                "axisP[1]",
-                "axisP[2]",
-                "axisI[0]",
-                "axisI[1]",
-                "axisI[2]",
-                "axisD[0]",
-                "axisD[1]",
-                "axisF[0]",
-                "axisF[1]",
-                "axisF[2]",
-                "rcCommand[0]",
-                "rcCommand[1]",
-                "rcCommand[2]",
-                "rcCommand[3]",
-                "setpoint[0]",
-                "setpoint[1]",
-                "setpoint[2]",
-                "setpoint[3]",
-                "vbatLatest (V)",
-                "amperageLatest (A)",
-                "BaroAlt (cm)",
-                "rssi",
-                "gyroADC[0]",
-                "gyroADC[1]",
-                "gyroADC[2]",
-                "accSmooth[0]",
-                "accSmooth[1]",
-                "accSmooth[2]"
-        };
-    }
-
-    // Return array of columns used as blackbox debug columns in imported file.
-    private String[] getColumnsDebug() {
-        return new String[]{
-                "debug[0]",
-                "debug[1]",
-                "debug[2]",
-                "debug[3]"
-        };
-    }
-
-    // Return array of columns located AFTER debug columns in imported file.
-    private String[] getColumnsAfterDebug() {
-        return new String[]{
-                "motor[0]",
-                "motor[1]",
-                "motor[2]",
-                "motor[3]",
-                "energyCumulative (mAh)",
-                FLIGHT_MODE_HEADER,
-                STATE_HEADER,
-                FAILSAFE_PHASE_HEADER,
-                "rxSignalReceived",
-                "rxFlightChannelsValid",
-                "GPS_numSat",
-                "GPS_coord[0]",
-                "GPS_coord[1]",
-                "GPS_altitude",
-                "GPS_speed (m/s)",
-                "GPS_ground_course",
-                GPX_DATE_COLUMN_HEADER,
-                USER_DATE_COLUMN_HEADER,
-                V_SPEED_BARO_HEADER,
-                FLIGHT_MODE_INDICATOR_HEADER,
-                STATE_INDICATOR_HEADER,
-                FAILSAFE_PHASE_INDICATOR_HEADER,
-                STATUS_ICON_INDICATOR_HEADER
-        };
-    }
-
-    // Returns full collection of columns used in imported file including columns of blackbox debug mode.
-    private String[] getColumnsDebugOn() {
-
-        List<String> result = new ArrayList<>(Arrays.asList(getColumnsBeforeDebug()));
-        result.addAll(Arrays.asList(getColumnsDebug()));
-        result.addAll(Arrays.asList(getColumnsAfterDebug()));
-
-        return result.toArray(new String[0]);
-    }
-
-    private int countLines(String fileName) throws IOException {
-        FileReader fileReader = new FileReader(fileName);
-        BufferedReader bufferedReader = new BufferedReader(fileReader);
-        int lines = 0;
-        while (bufferedReader.readLine() != null) lines++;
-        bufferedReader.close();
-        return lines;
-    }
-
-    private String printLineCounter(float currentLineCounter, float totalLines, String lastPrintedCounter) {
-
-        String lineCounterToPrint = String.valueOf(Math.round(currentLineCounter / totalLines * 100));
-
-        if (lineCounterToPrint.equals(lastPrintedCounter)) {
-            return lastPrintedCounter;
-        }
-
-        System.out.print("\b\b\b\b\b\b\b\b\b\b\b");
-        System.out.print(lineCounterToPrint + "% ");
-        System.out.flush();
-
-        return lineCounterToPrint;
-    }
-
-    private void printHeaderRow(String[] columns, PrintWriter printWriter) {
-        List<String> rowData = new ArrayList<>(Arrays.asList(columns));
-        printRowData(rowData, printWriter);
-    }
-
     // Returns value of a column as original or generated (transformed) from original content.
     private String generateValue(String[] columns, List<String> rowValues, int columnIdx) throws Exception {
 
@@ -445,13 +279,6 @@ public class CSVConverter {
         prevResultValues = Collections.unmodifiableList(resultValues);
 
         printRowData(resultValues, printWriter);
-    }
-
-    private void printRowData(List<String> rowData, PrintWriter printWriter) {
-        String[] resultValues = rowData.toArray(new String[0]);
-        String stringToWrite = String.join(CSV_DELIMITER, resultValues);
-        printWriter.println(stringToWrite);
-        printWriter.flush();
     }
 
     /**
@@ -523,5 +350,15 @@ public class CSVConverter {
         }
 
         return add + valueStr;
+    }
+
+    @Override
+    protected void processRow(Map<String, Object> parameters) throws Exception {
+
+        String row = (String) parameters.get("row");
+        String[] columns = (String[]) parameters.get("columns");
+        PrintWriter printWriter = (PrintWriter) parameters.get("printWriter");
+
+        printRow(row, columns, printWriter);
     }
 }
