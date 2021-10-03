@@ -3,6 +3,7 @@ package com.csvoptimizer;
 import java.io.PrintWriter;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.csvoptimizer.Constants.*;
@@ -11,14 +12,14 @@ public class Averager extends AbstractRunnable {
 
     private String pathToInputFile;
     private String pathToOutputFile;
-    private String columnName;
+    private Set<String> averColumns;
     int depth;
 
     private EvictingQueue queue;
     private String delimiter;
     private Class type;
 
-    public Averager(String pathToInputFile, String pathToOutputFile, String columnName, int depth) {
+    public Averager(String pathToInputFile, String pathToOutputFile, Set<String> averColumns, int depth) {
 
         this.pathToInputFile = pathToInputFile;
         this.pathToOutputFile = pathToOutputFile;
@@ -28,7 +29,7 @@ public class Averager extends AbstractRunnable {
         }
 
         this.depth = depth;
-        this.columnName = columnName;
+        this.averColumns = averColumns;
     }
 
     @Override
@@ -36,14 +37,14 @@ public class Averager extends AbstractRunnable {
         try {
 
             Map<String, Object> parameters = new HashMap<>();
-            parameters.put(PATH_TO_INPUT_FILE, pathToInputFile);
-            parameters.put(PATH_TO_OUTPUT_FILE, pathToOutputFile);
+            parameters.put(CLI_PARAM_IN, pathToInputFile);
+            parameters.put(CLI_PARAM_OUT, pathToOutputFile);
 
             // For averaging step is always 1 because every account is taken into account.
-            parameters.put(STEP, 1);
+            parameters.put(CLI_PARAM_STEP, 1);
 
-            parameters.put(COLUMN_NAME, columnName);
-            parameters.put(DEPTH, depth);
+            parameters.put(AVER_COLUMNS, averColumns);
+            parameters.put(AVER_DEPTH, depth);
 
             processRows(parameters);
 
@@ -57,40 +58,45 @@ public class Averager extends AbstractRunnable {
 
         Map<String, Object> rowParameters = new HashMap<>();
         PrintWriter printWriter = (PrintWriter) parameters.get(PRINT_WRITER);
-        String[] columns = (String[]) parameters.get(COLUMNS);
+        String[] averColumns = (String[]) parameters.get(AVER_COLUMNS);
         String row = (String) parameters.get(ROW);
 
         // Take value for the specified column and define if it has decimal separator.
         String[] rowValues = row.split(CSV_DELIMITER, -1);
         //List<String> resultValues = new ArrayList<>(Arrays.asList(rowValues));
-        int timeColumnIdx = getColumnIndex(columnName);
-        String currentValue = rowValues[timeColumnIdx];
+        for (int i = 0; i < averColumns.length; i++) {
 
-        // Initialize delimiter and type using type of the first value.
-        if (delimiter == null) {
+            String columnName = averColumns[i];
 
-            delimiter = getDelimiter(currentValue);
+            int timeColumnIdx = getColumnIndex(columnName);
+            String currentValue = rowValues[timeColumnIdx];
 
-            if (delimiter.isEmpty()) {
-                type = Integer.class;
-            } else {
-                type = Double.class;
+            // Initialize delimiter and type using type of the first value.
+            if (delimiter == null) {
+
+                delimiter = getDelimiter(currentValue);
+
+                if (delimiter.isEmpty()) {
+                    type = Integer.class;
+                } else {
+                    type = Double.class;
+                }
             }
-        }
 
-        // Initialize queue with certain data type (with or without decimal separator).
-        if (queue == null) {
-            queue = initQueue(delimiter);
-        }
+            // Initialize queue with certain data type (with or without decimal separator).
+            if (queue == null) {
+                queue = initQueue(delimiter);
+            }
 
-        if (type == Integer.class) {
-            Integer val = Integer.parseInt(currentValue);
-            queue.put(val);
-            Integer average = calculateAverageInteger(queue);
-        } else if (type == Double.class) {
-            Double val = Double.parseDouble(currentValue);
-            queue.put(val);
-            Double average = calculateAverageDouble(queue);
+            if (type == Integer.class) {
+                Integer val = Integer.parseInt(currentValue);
+                queue.put(val);
+                Integer average = calculateAverageInteger(queue);
+            } else if (type == Double.class) {
+                Double val = Double.parseDouble(currentValue);
+                queue.put(val);
+                Double average = calculateAverageDouble(queue);
+            }
         }
     }
 
@@ -101,7 +107,7 @@ public class Averager extends AbstractRunnable {
             return 0;
         }
 
-        Integer summ = (Integer) queue.stream().collect(Collectors.summarizingInt(Integer::intValue));
+        Integer summ = Integer.parseInt((String) queue.stream().collect(Collectors.summarizingInt(Integer::intValue)));
 
         return summ / size;
     }
@@ -138,15 +144,11 @@ public class Averager extends AbstractRunnable {
      */
     private EvictingQueue initQueue(String delimiter) {
 
-        EvictingQueue result;
-
         // Just check if any delimiter exists.
         if (delimiter.isEmpty()) {
-            result = new EvictingQueue<Integer>(depth);
+            return new EvictingQueue<Integer>(depth);
         } else {
-            result = new EvictingQueue<Double>(depth);
+            return new EvictingQueue<Double>(depth);
         }
-
-        return result;
     }
 }

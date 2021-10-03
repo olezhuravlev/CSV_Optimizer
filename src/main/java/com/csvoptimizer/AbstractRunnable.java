@@ -114,9 +114,9 @@ public abstract class AbstractRunnable implements Runnable {
 
     protected void processRows(Map<String, Object> parameters) throws Exception {
 
-        String inputPath = (String) parameters.get(PATH_TO_INPUT_FILE);
-        String outputPath = (String) parameters.get(PATH_TO_OUTPUT_FILE);
-        int step = (int) parameters.get(STEP);
+        String inputPath = (String) parameters.get(CLI_PARAM_IN);
+        String outputPath = (String) parameters.get(CLI_PARAM_OUT);
+        int step = (int) parameters.get(CLI_PARAM_STEP);
 
         float totalLines = countLines(inputPath);
         System.out.println("Lines to process: " + Math.round(totalLines));
