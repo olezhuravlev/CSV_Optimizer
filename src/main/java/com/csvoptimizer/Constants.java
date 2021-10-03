@@ -10,36 +10,48 @@ public final class Constants {
     }
 
     public static final String OPERATION = "operation";
-    public static final String OPERATION_AVERAGE = "AVER";
-    public static final String OPERATION_ENRICH = "ENR";
     public static final String COLUMN_NAME = "columnName";
+
     public static final String COLUMNS = "columns";
     public static final String ROW = "row";
-    public static final String DEPTH = "depth";
-    public static final String PATH_TO_INPUT_FILE = "inputPath";
-    public static final String PATH_TO_OUTPUT_FILE = "outputPath";
-    public static final String STEP = "step";
-    public static final String STARTING_DATE = "startDate";
+
     public static final String PRINT_WRITER = "printWriter";
 
-    public static final String DEFAULT_START_DATE = "2021-01-01 12:00:00";
+    public static final Locale DATE_LOCALE = Locale.ENGLISH;
 
-    public static final String COMMA_DELIMITER = ",";
-    public static final String POINT_DELIMITER = ".";
-
-    public static final String CSV_DELIMITER = COMMA_DELIMITER;
-
-    public static final String DATE_FORMAT_INPUT = "yyyy-MM-dd HH:mm:ss";
+    public static final String DATE_TIME_DELIMITER = "_";
+    public static final String DEFAULT_START_DATE = "2021-01-01" + DATE_TIME_DELIMITER + "12:00:00";
+    public static final String DATE_FORMAT_INPUT = "yyyy-MM-dd" + DATE_TIME_DELIMITER + "HH:mm:ss";
     public static final String DATE_FORMAT_USER = DATE_FORMAT_INPUT;
     public static final String DATE_FORMAT_GPX = "yyyy-MM-dd'T'HH:mm:ss";
     public static final String DATE_FORMAT_MS = "yyyy-MM-dd'T'HH:mm:ss.SSS";
 
-    public static final Locale DATE_LOCALE = Locale.ENGLISH;
-
     public static final SimpleDateFormat DATE_FORMATTER_INPUT = new SimpleDateFormat(DATE_FORMAT_INPUT, DATE_LOCALE);
     public static final SimpleDateFormat DATE_FORMATTER_USER = new SimpleDateFormat(DATE_FORMAT_USER, DATE_LOCALE);
     public static final SimpleDateFormat DATE_FORMATTER_GPX = new SimpleDateFormat(DATE_FORMAT_GPX, DATE_LOCALE);
-    public static final SimpleDateFormat DATE_FORMATTER_MS = new SimpleDateFormat(DATE_FORMAT_MS, DATE_LOCALE);
+
+    public static final int DEFAULT_STEP = 1;
+
+    public static final String CLI_PARAM_FILE = "pars";
+
+    public static final String CLI_PARAM_IN = "in";
+    public static final String CLI_PARAM_OUT = "out";
+    public static final String CLI_PARAM_STEP = "step";
+    public static final String CLI_PARAM_DATE = "date";
+    public static final String CLI_PARAM_AVER_COLUMNS = "avercols";
+    public static final String CLI_PARAM_AVER_DEPTH = "averdep";
+    public static final String CLI_PARAM_NAME_DELIMITER = "=";
+
+    public static final String AVER_COLUMNS = CLI_PARAM_AVER_COLUMNS;
+    public static final String AVER_DEPTH = CLI_PARAM_AVER_DEPTH;
+
+    public static final String CLI_ARRAY_BEGIN = "{";
+    public static final String CLI_ARRAY_END = "}";
+    public static final String CLI_ARRAY_DELIMITER = ",";
+    public static final String COMMA_DELIMITER = ",";
+    public static final String POINT_DELIMITER = ".";
+
+    public static final String CSV_DELIMITER = COMMA_DELIMITER;
 
     public static final String INDEX_OUT_OF_BOUND_MESSAGE = "Wrong column index!";
 

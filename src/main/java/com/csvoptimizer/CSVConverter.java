@@ -1,7 +1,6 @@
 package com.csvoptimizer;
 
 import java.io.*;
-import java.text.ParseException;
 import java.util.*;
 
 import static com.csvoptimizer.Constants.*;
@@ -10,7 +9,7 @@ public class CSVConverter extends AbstractRunnable {
 
     private String pathToInputFile;
     private String pathToOutputFile;
-    private String startingDate;
+    private Calendar startingDate;
     int step;
 
     private Map<String, FieldGenerator> generators = new HashMap<>();
@@ -18,7 +17,7 @@ public class CSVConverter extends AbstractRunnable {
     // Unmodifiable collection can be used in calculation values for another row.
     private List<String> prevResultValues;
 
-    public CSVConverter(String pathToInputFile, String pathToOutputFile, int step, String startingDate) {
+    public CSVConverter(String pathToInputFile, String pathToOutputFile, int step, Calendar startingDate, Averager averager) {
 
         this.pathToInputFile = pathToInputFile;
         this.pathToOutputFile = pathToOutputFile;
@@ -37,30 +36,7 @@ public class CSVConverter extends AbstractRunnable {
     @Override
     public void run() {
 
-        if (startingDate == null || startingDate.isEmpty()) {
-            System.out.println("Enter a starting date for the log as '" + DATE_FORMAT_INPUT + "' (" + DEFAULT_START_DATE + "):");
-            BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-            try {
-                startingDate = reader.readLine();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
-        if (startingDate == null || startingDate.isEmpty()) {
-            startingDate = DEFAULT_START_DATE;
-        }
-
-        Date dateInput = null;
-        try {
-            dateInput = DATE_FORMATTER_INPUT.parse(startingDate);
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
-        Calendar startDate = Calendar.getInstance();
-        startDate.setTime(dateInput);
-
-        initGenerators(startDate);
+        initGenerators(this.startingDate);
 
         try {
             processRows(pathToInputFile, pathToOutputFile);
@@ -119,8 +95,7 @@ public class CSVConverter extends AbstractRunnable {
         generators.put(GPX_DATE_COLUMN_HEADER, (columns, rowValues, columnIdx) -> {
             int timeColumnIdx = getColumnIndex(TIME_COLUMN_NAME);
             String currentValue = rowValues.get(timeColumnIdx);
-            String timeMs = getMillisecDateFromTime(currentValue, startDate);
-            return timeMs;
+            return getMillisecDateFromTime(currentValue, startDate);
         });
 
         // Adds column value for data to be shown in user-friendly format.
@@ -128,8 +103,7 @@ public class CSVConverter extends AbstractRunnable {
             int timeColumnIdx = getColumnIndex(GPX_DATE_COLUMN_HEADER);
             String timeMs = rowValues.get(timeColumnIdx).trim();
             Date date = DATE_FORMATTER_GPX.parse(timeMs);
-            String userDate = DATE_FORMATTER_USER.format(date.getTime());
-            return userDate;
+            return DATE_FORMATTER_USER.format(date.getTime());
         });
 
         // Adds column value for vertical speed calculated from barometer altitude.
@@ -151,8 +125,7 @@ public class CSVConverter extends AbstractRunnable {
             long currentBaroAltCm = Long.parseLong(currBaroAlt);
             long prevBaroAltCm = Long.parseLong(prevBaroAlt);
 
-            String vSpeedCm = calculateVertSpeed(currTime, prevTime, currentBaroAltCm, prevBaroAltCm);
-            return vSpeedCm;
+            return calculateVertSpeed(currTime, prevTime, currentBaroAltCm, prevBaroAltCm);
         });
 
         // Sets digital representation of flight mode.
@@ -162,20 +135,17 @@ public class CSVConverter extends AbstractRunnable {
             String sourceValue = rowValues.get(sourceColumnIdx);
             sourceValue = sourceValue == null ? "" : sourceValue.trim();
 
-            String result;
             if (sourceValue.contains("ANGLE_MODE")) {
                 if (sourceValue.contains("PASSTHRU") && sourceValue.contains("AUTOTUNE")) {
-                    result = "3";
+                    return "3";
                 } else if (sourceValue.contains("AUTOTUNE")) {
-                    result = "2";
+                    return "2";
                 } else {
-                    result = "1";
+                    return "1";
                 }
             } else {
-                result = "0";
+                return "0";
             }
-
-            return result;
         });
 
         // Sets digital representation of flight state.
@@ -259,8 +229,7 @@ public class CSVConverter extends AbstractRunnable {
 
         // Obtain value using designated generator.
         FieldGenerator generator = generators.get(columnName);
-        String result = generator.generateValue(columns, rowValues, columnIdx);
-        return result;
+        return generator.generateValue(columns, rowValues, columnIdx);
     }
 
     // Outputs values of another row into result file.
@@ -307,8 +276,8 @@ public class CSVConverter extends AbstractRunnable {
         Calendar rowDate = (Calendar) startDate.clone();
         rowDate.add(Calendar.SECOND, secondsInt);
 
-        String startingDate = DATE_FORMATTER_GPX.format(rowDate.getTime());
-        return startingDate + "." + secondsString + "Z";
+        String startDateFormatted = DATE_FORMATTER_GPX.format(rowDate.getTime());
+        return startDateFormatted + "." + secondsString + "Z";
     }
 
     private String calculateVertSpeed(long currTimeMs, long prevTimeMs, long currBaroAltCm, long prevBaroAltCm) {
@@ -332,8 +301,7 @@ public class CSVConverter extends AbstractRunnable {
         }
 
         try {
-            int result = Integer.parseInt(val);
-            return result;
+            return Integer.parseInt(val);
         } catch (NumberFormatException nfe) {
             return 0;
         }
@@ -344,12 +312,12 @@ public class CSVConverter extends AbstractRunnable {
         String valueStr = String.valueOf(val);
 
         int symbolsToAdd = length - valueStr.length();
-        String add = "";
+        StringBuilder stringBuilder = new StringBuilder();
         for (int i = 0; i < symbolsToAdd; ++i) {
-            add += symbol;
+            stringBuilder.append(symbol);
         }
 
-        return add + valueStr;
+        return stringBuilder + valueStr;
     }
 
     @Override
